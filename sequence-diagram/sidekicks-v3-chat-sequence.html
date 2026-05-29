@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sidekicks v3 Chat Entrypoint — Sequence Diagram</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --surface: #1e2535;
+    --border: #2a3348;
+    --border-bright: #3d4f6b;
+    --text-primary: #e2e8f0;
+    --text-dim: #8892a4;
+    --text-muted: #4a5568;
+    --arrow-req: #60a5fa;
+    --arrow-res: #4ade80;
+    --arrow-async: #a78bfa;
+    --group-header-bg: #151c2b;
+  }
+  html, body { height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+  header {
+    flex-shrink: 0;
+    padding: 10px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-bright);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 14px; font-weight: 600; }
+  header p { font-size: 11px; color: var(--text-dim); font-family: monospace; margin-top: 2px; }
+  .legend { display: flex; gap: 14px; margin-left: auto; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+  .leg-line { width: 24px; height: 2px; }
+  .scroll-wrapper { flex: 1; overflow: auto; min-height: 0; }
+  .diagram { padding-bottom: 60px; }
+  .participants-row {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+    display: flex;
+    border-bottom: 2px solid var(--border-bright);
+  }
+  .p-col {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 4px;
+    gap: 3px;
+  }
+  .p-box {
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid;
+    background: var(--surface);
+    font-size: 10px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.35;
+  }
+  .p-layer { font-size: 9px; color: var(--text-muted); }
+  .group { border-bottom: 1px solid var(--border); }
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px;
+    background: var(--group-header-bg);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header:hover { background: #1a2336; }
+  .chevron { font-size: 9px; color: var(--text-muted); transition: transform 0.2s; }
+  .group-title { font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .group-count { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+  .group-body { overflow: hidden; max-height: 9999px; transition: max-height 0.35s ease; }
+  .group-body.collapsed { max-height: 0; }
+  .seq-row {
+    position: relative;
+    cursor: pointer;
+  }
+  .seq-row:hover { background: rgba(255,255,255,0.025); }
+  .seq-row.pinned { background: rgba(96,165,250,0.05); outline: 1px solid rgba(96,165,250,0.2); }
+  #detailPanel {
+    position: fixed;
+    right: 16px;
+    top: 70px;
+    width: 290px;
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 14px 14px 14px 14px;
+    z-index: 200;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    gap: 9px;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+  }
+  #detailPanel.open { display: flex; }
+  .panel-close {
+    position: absolute; top: 8px; right: 10px;
+    font-size: 13px; color: var(--text-muted); cursor: pointer;
+    background: none; border: none; line-height: 1;
+  }
+  .panel-close:hover { color: var(--text-primary); }
+  .panel-kind {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    width: fit-content;
+  }
+  .panel-title { font-size: 12px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+  .panel-code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 10.5px;
+    color: #fbbf24;
+    background: rgba(0,0,0,0.35);
+    padding: 6px 8px;
+    border-radius: 4px;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .panel-desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.55; }
+  .panel-link { font-size: 11px; color: var(--arrow-req); text-decoration: none; font-family: monospace; word-break: break-all; }
+  .panel-link:hover { text-decoration: underline; }
+  .panel-divider { border: none; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Sidekicks v3 Chat Entrypoint</h1>
+    <p>POST /api/v3/chats/{conversationId}/messages/stream</p>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="leg-line" style="background:#60a5fa"></div> request</div>
+    <div class="legend-item"><div class="leg-line" style="background:#4ade80"></div> response</div>
+    <div class="legend-item">
+      <div class="leg-line" style="background:repeating-linear-gradient(90deg,#a78bfa 0,#a78bfa 5px,transparent 5px,transparent 9px)"></div>
+      async
+    </div>
+    <div class="legend-item" style="color:#fbbf24">ℹ note</div>
+    <div class="legend-item" style="margin-left:8px;font-size:10px;opacity:.6">click row for details · ESC to close</div>
+  </div>
+</header>
+
+<div class="scroll-wrapper" id="sw">
+  <div id="diagram" class="diagram"></div>
+</div>
+
+<div id="detailPanel">
+  <button class="panel-close" id="panelClose">✕</button>
+  <span class="panel-kind" id="panelKind"></span>
+  <div class="panel-title" id="panelTitle"></div>
+  <hr class="panel-divider">
+  <div class="panel-code" id="panelCode"></div>
+  <div class="panel-desc" id="panelDesc"></div>
+  <a class="panel-link" id="panelLink" target="_blank" href="#"></a>
+</div>
+
+<script>
+const BLOB = 'https://github.com/miroapp-dev/sidekicks/blob/main/src/main/kotlin/com/miro/sidekicks/';
+const COL_W = 160;
+const ROW_H  = 46;
+const NOTE_H = 33;
+
+const LAYER_COLORS = {
+  client:   '#3d6e9e',
+  delivery: '#5b6e8e',
+  domain:   '#4a7c5e',
+  external: '#7c5b4a',
+  infra:    '#6b5b8e',
+};
+
+const KIND_COLOR = { req: '#60a5fa', res: '#4ade80', async: '#a78bfa' };
+const KIND_BG    = { req: 'rgba(96,165,250,.14)', res: 'rgba(74,222,128,.14)', async: 'rgba(167,139,250,.14)' };
+const KIND_LABEL = { req: 'Request →', res: '← Response', async: 'Async' };
+
+const PARTICIPANTS = [
+  { name: 'Client',            layer: 'client',   desc: 'Browser / Frontend' },
+  { name: 'ChatControllerV3',  layer: 'delivery', desc: 'HTTP entry point',                                          file: 'domain/chat/controller/ChatControllerV3.kt' },
+  { name: 'ChatService',       layer: 'domain',   desc: 'Core chat orchestration',                                   file: 'domain/chat/service/ChatService.kt' },
+  { name: 'ComplianceService', layer: 'external', desc: 'AI compliance · ai-proxy-service gRPC',                    file: 'api/compliance/service/ComplianceService.kt' },
+  { name: 'ContextMgmtSvc',   layer: 'domain',   desc: 'Parallel external context building',                        file: 'domain/context/service/ContextManagementService.kt' },
+  { name: 'ModerationSvc',    layer: 'external', desc: 'OpenAI content moderation · core-ai REST',                  file: 'api/moderation/ModerationService.kt' },
+  { name: 'MessageHandling',   layer: 'domain',   desc: 'Save user / AI messages to DB',                            file: 'domain/chat/service/MessageHandlingService.kt' },
+  { name: 'ToolRegistry',      layer: 'domain',   desc: 'Resolve & invoke LLM tools (FunctionCallback)',             file: 'domain/tools/ToolRegistry.kt' },
+  { name: 'Spring AI',         layer: 'infra',    desc: 'LLM streaming via AI Gateway (ChatClient + advisors)' },
+  { name: 'EventPublisher',    layer: 'domain',   desc: 'Domain events: SidekickEventPublisher → AiHistorySubscriber', file: 'domain/events/SidekickEventPublisher.kt' },
+  { name: 'AI Conv. Hub',      layer: 'external', desc: 'ai-conversations-hub · AI history persistence (gRPC)',      file: 'api/AiConversationsHubService.kt' },
+  { name: 'EventHub/Pubsub',   layer: 'external', desc: 'EventHub analytics + Kafka PubSub events' },
+];
+
+const N = PARTICIPANTS.length;
+const DIAGRAM_W = N * COL_W + 16;
+
+const GROUPS = [
+  {
+    title: 'Request Setup',
+    steps: [
+      { from: 0, to: 1, kind: 'req',
+        label: 'POST /api/v3/chats/{id}/messages/stream',
+        detail: 'ChatControllerV3.streamMessage()',
+        file: 'domain/chat/controller/ChatControllerV3.kt', line: 762,
+        desc: 'Client initiates a streaming chat request. Controller extracts userId, credentials, token, workspaceId, userIp, clientType; validates auth and XRDM lock; finds the chat via chatService.findChat(); validates sidekick access; resolves experiment flags (sub-agent, AI history memory, user input request).' },
+      { from: 1, to: 2, kind: 'req',
+        label: 'streamResponse(request, authCtx, experiments)',
+        detail: 'ChatService.streamResponse()',
+        file: 'domain/chat/service/ChatService.kt', line: 186,
+        desc: 'Controller delegates to ChatService which owns the full streaming orchestration. Creates a fresh ToolOutputBus for tool output streaming, an AiHistoryEventEmitter if AI history is enabled, and starts an SSE heartbeat coroutine to keep the connection alive.' },
+    ]
+  },
+  {
+    title: 'Compliance & Validation',
+    steps: [
+      { from: 2, to: 3, kind: 'req',
+        label: 'handleCompliance(sessionId, boardKey, useCase)',
+        detail: 'ComplianceService.handleCompliance()',
+        file: 'api/compliance/service/ComplianceService.kt', line: 41,
+        desc: 'Calls ai-proxy-service via gRPC to fetch the compliance context for this session. Determines org ID, team ID, allowed model policies, moderation requirements (REQUIRED / OPTIONAL), and feature enablement flags.' },
+      { from: 3, to: 2, kind: 'res',
+        label: 'ComplianceContext(orgId, teamId, modelPolicies, moderation…)',
+        detail: 'ComplianceContext returned',
+        file: 'api/compliance/service/ComplianceService.kt', line: 81,
+        desc: 'Compliance context is threaded through the remainder of the request to gate model selection, moderation level, and feature availability.' },
+      { kind: 'note', text: 'ChatService.kt:247–274 — Find Chat in DB · Load Sidekick config · Validate access permissions' },
+    ]
+  },
+  {
+    title: 'Context Building',
+    steps: [
+      { from: 2, to: 4, kind: 'req',
+        label: 'buildContext(request, sidekick, credentials)',
+        detail: 'ContextManagementService.buildContext()',
+        file: 'domain/context/service/ContextManagementService.kt', line: 65,
+        desc: 'Spawns 4 parallel coroutines to gather external context: (1) fetchWidgetContext — summaries of widgets being edited; (2) loadSidekickFiles — pgvector knowledge retrieval; (3) loadVisualContext — board image capture; (4) fetchBoardTextContext — text from selected board nodes.' },
+      { kind: 'note', text: 'Parallel: fetchWidgetContext · loadSidekickFiles · loadVisualContext · fetchBoardTextContext' },
+      { from: 4, to: 2, kind: 'res',
+        label: 'ExternalContextData(widget, visual, files, boardText)',
+        detail: 'ExternalContextData returned',
+        file: 'domain/context/service/ContextManagementService.kt', line: 71,
+        desc: 'All context assembled. ChatService (line 409) builds the full context string with system prompt + user message, then checks (line 418) if context was truncated to fit the model\'s context window.' },
+    ]
+  },
+  {
+    title: 'Content Moderation',
+    steps: [
+      { from: 2, to: 5, kind: 'req',
+        label: 'moderate(REQUIRED, userMessage)',
+        detail: 'ModerationService.moderate(REQUIRED)',
+        file: 'domain/chat/service/ChatService.kt', line: 424,
+        desc: 'Synchronous blocking moderation check on the user message. Calls the OpenAI moderation API via core-ai REST. If a policy violation is found, ChatService emits an error_message SSE event and terminates the stream immediately.' },
+      { from: 5, to: 2, kind: 'res',
+        label: 'safe: Boolean',
+        detail: 'Moderation result (REQUIRED mode)',
+        file: 'api/moderation/ModerationService.kt', line: 59,
+        desc: 'Returns true (safe) or false (violation). A false result causes the streaming response to be aborted with an appropriate error message sent to the client.' },
+      { from: 2, to: 5, kind: 'async',
+        label: 'moderate(RELAXED) — fire and forget',
+        detail: 'ModerationService.moderate(RELAXED) async',
+        file: 'domain/chat/service/ChatService.kt', line: 442,
+        desc: 'RELAXED moderation runs asynchronously in parallel with response generation. Violations produce a warning log but do not interrupt the live SSE stream.' },
+    ]
+  },
+  {
+    title: 'Save User Message',
+    steps: [
+      { from: 2, to: 6, kind: 'req',
+        label: 'saveUserMessage(chatId, content, contextText)',
+        detail: 'MessageHandlingService.saveUserMessage()',
+        file: 'domain/chat/service/ChatService.kt', line: 465,
+        desc: 'Persists the user message to PostgreSQL via ChatMessageRepository before starting LLM generation. Also checks hasUserMessage() to determine the first-message analytics flag.' },
+      { from: 6, to: 2, kind: 'res',
+        label: 'ChatMessage entity',
+        detail: 'Saved ChatMessage returned',
+        file: 'domain/chat/service/MessageHandlingService.kt', line: 340,
+        desc: 'Returns the saved ChatMessage entity. ChatService records a chat interaction metric via aiMetrics.recordChatInteraction().' },
+      { from: 2, to: 11, kind: 'async',
+        label: 'messageSent(user) + pubsub CHAT_EVENT_TYPE_MESSAGE_SENT_BY_USER',
+        detail: 'EventHub analytics + Kafka PubSub event',
+        file: 'domain/chat/service/ChatService.kt', line: 487,
+        desc: 'Fires user-message analytics event to EventHub (line 475) and publishes a Kafka PubSub event (CHAT_EVENT_TYPE_MESSAGE_SENT_BY_USER) for downstream subscribers.' },
+    ]
+  },
+  {
+    title: 'LLM Streaming',
+    steps: [
+      { from: 2, to: 7, kind: 'req',
+        label: 'getAvailableTools(editMode, experimentFlags)',
+        detail: 'ToolRegistry.getAvailableTools()',
+        file: 'domain/tools/ToolRegistry.kt', line: 78,
+        desc: 'Resolves the set of available Spring AI FunctionCallbacks based on: edit vs. generate mode; knowledge tools (web search, knowledge providers); experiment flags for board gen, customer journey map, sub-agent delegation, user input request, MCP connectors, and integrations visualizations.' },
+      { from: 7, to: 2, kind: 'res',
+        label: 'List<FunctionCallback> (tools)',
+        detail: 'Resolved tools list',
+        file: 'domain/tools/ToolRegistry.kt', line: 101,
+        desc: 'The resolved tool list is passed to Spring AI ChatClient for LLM function-calling. Tools include diagram gen, document gen, image gen, whiteboarding, prototyping, slide gen, datatable gen, board gen, knowledge retrieval, web search, etc.' },
+      { from: 2, to: 8, kind: 'req',
+        label: 'chatClient.prompt().system().user().tools().stream()',
+        detail: 'Spring AI ChatClient streaming call',
+        file: 'domain/chat/service/ChatService.kt', line: 832,
+        desc: 'Builds the full ChatClient prompt: system prompt + knowledge files, user message + media attachments, tools, and advisors. Advisors: TokenWindowChatMemoryAdvisor (or AiHistoryBasedChatMemoryAdvisor), ConnectorConsentAdvisor, AiHistoryEventCollectionAdvisor. ToolContext carries boardKey, authToken, image/widget IDs, experiment flags, and the AiHistoryEventEmitter ref.' },
+      { from: 8, to: 9, kind: 'async',
+        label: 'RunStartedEvent emitted at stream start',
+        detail: 'AiHistoryEventCollectionAdvisor → SidekickEventPublisher',
+        file: 'domain/chat/service/ChatService.kt', line: 679,
+        desc: 'At stream start, AiHistoryEventCollectionAdvisor (a Spring AI advisor) or ChatService (line 679) emits RunStartedEvent via SidekickEventPublisher → Spring ApplicationEventPublisher → AiHistoryEventSubscriber.onSidekickAppEvent().' },
+      { from: 9, to: 10, kind: 'async',
+        label: 'addEvent(RunStarted) gRPC',
+        detail: 'AiConversationsHubService.addEvent()',
+        file: 'api/AiConversationsHubService.kt', line: 63,
+        desc: 'AiHistoryEventSubscriber maps RunStartedEvent to a proto LlmEventInput and calls ai-conversations-hub via gRPC to persist it for AI history tracking. Failures are caught and logged, never thrown.' },
+      { from: 8, to: 2, kind: 'res',
+        label: 'Flux<ChatResponse> (streaming token chunks)',
+        detail: 'Reactive token stream',
+        file: 'domain/chat/service/ChatService.kt', line: 643,
+        desc: 'Reactive stream of LLM response chunks (tokens). Merged (line 676) with ToolOutputBus flux (tool progress events). Each chunk is collected into a responseBuilder and each MessagePart is forwarded to the SSE response.' },
+      { from: 2, to: 0, kind: 'res',
+        label: 'SSE: MessagePart (text · tool output · citations)',
+        detail: 'Server-Sent Events streamed to client',
+        file: 'domain/chat/service/ChatService.kt', line: 745,
+        desc: 'Each MessagePart (text token, tool streaming result, artifact reference, citation, or connector-consent prompt) is written to the HTTP response via Server-Sent Events in real-time.' },
+    ]
+  },
+  {
+    title: 'Tool Execution (during streaming)',
+    steps: [
+      { from: 8, to: 7, kind: 'req',
+        label: 'invoke tool(request, toolExecutionId)',
+        detail: 'Spring AI function-calling invocation',
+        file: 'domain/tools/ToolRegistry.kt', line: 78,
+        desc: 'When the LLM decides to call a tool, Spring AI resolves and invokes the matching FunctionCallback. Streaming tools (e.g. DiagramTool, DocumentTool, ImageTool, PrototypingTool) publish incremental progress to ToolOutputBus as they call core-ai REST endpoints.' },
+      { from: 7, to: 8, kind: 'res',
+        label: 'tool result JSON injected into context',
+        detail: 'Tool result returned to Spring AI',
+        file: 'domain/tools/ToolRegistry.kt', line: 101,
+        desc: 'Tool execution result serialized as JSON and injected back into the LLM conversation as a tool message. The LLM then continues generating based on the tool output.' },
+      { from: 7, to: 9, kind: 'async',
+        label: 'ToolCallEvent + ToolCallResultEvent',
+        detail: 'ToolCallEventAspect (AOP) → SidekickEventPublisher',
+        file: 'domain/aihistory/ToolCallEventAspect.kt', line: 1,
+        desc: 'An AOP @Around aspect intercepts every tool invocation: emits ToolCallEvent before and ToolCallResultEvent after execution, both via SidekickEventPublisher → AiHistoryEventSubscriber → ai-conversations-hub gRPC.' },
+    ]
+  },
+  {
+    title: 'Post-Processing',
+    steps: [
+      { from: 8, to: 9, kind: 'async',
+        label: 'RunFinishedEvent(outcome: success | error)',
+        detail: 'AiHistoryEventCollectionAdvisor → SidekickEventPublisher',
+        file: 'domain/chat/service/ChatService.kt', line: 726,
+        desc: 'At stream completion (or error), emits RunFinishedEvent with the final outcome. On error paths, also emits an error_message SSE event to the client before closure.' },
+      { from: 9, to: 10, kind: 'async',
+        label: 'addEvent(RunFinished) gRPC',
+        detail: 'AiConversationsHubService.addEvent()',
+        file: 'api/AiConversationsHubService.kt', line: 63,
+        desc: 'RunFinished event forwarded to ai-conversations-hub for AI history persistence and run-level analytics.' },
+      { from: 2, to: 6, kind: 'req',
+        label: 'saveSidekickMessage(chatId, fullResponse)',
+        detail: 'MessageHandlingService.saveSidekickMessage()',
+        file: 'domain/chat/service/ChatService.kt', line: 762,
+        desc: 'After the stream completes, persists the full AI response text to PostgreSQL. Also stores context text from selected board nodes if present. JsonDetectionService (line 773) scans for embedded JSON artifacts.' },
+      { from: 6, to: 2, kind: 'res',
+        label: 'saved',
+        detail: 'AI message persisted',
+        file: 'domain/chat/service/MessageHandlingService.kt', line: 762,
+        desc: 'AI message saved to ChatMessageRepository.' },
+      { from: 2, to: 11, kind: 'async',
+        label: 'messageSent(ai) analytics',
+        detail: 'EventHub analytics for AI response',
+        file: 'domain/chat/service/ChatService.kt', line: 785,
+        desc: 'Analytics event tracking the AI response: model used, token count, tool calls made, response duration, etc.' },
+      { from: 2, to: 3, kind: 'async',
+        label: 'notifyState(COMPLETED) gRPC',
+        detail: 'ComplianceService.notifyState(COMPLETED)',
+        file: 'domain/chat/service/ChatService.kt', line: 797,
+        desc: 'Notifies ai-proxy-service that the compliance session has completed. Used for audit logging and per-user/org rate tracking.' },
+    ]
+  },
+];
+
+/* ─── helpers ─────────────────────────────────────────────────────────── */
+function cx(i) { return i * COL_W + COL_W / 2; }
+
+function lifelines(h) {
+  return PARTICIPANTS.map((_, i) => {
+    const x = cx(i);
+    return `<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="rgba(42,51,72,.65)" stroke-width="1"/>`;
+  }).join('');
+}
+
+function arrowSVG(from, to, kind, h) {
+  const fx = cx(from), tx = cx(to), y = h / 2;
+  const c = KIND_COLOR[kind];
+  const dash = kind === 'async' ? 'stroke-dasharray="6,4" opacity=".75"' : 'opacity=".9"';
+  const goRight = tx >= fx;
+  const arrowHead = goRight
+    ? `<polygon points="${tx},${y} ${tx-9},${y-4.5} ${tx-9},${y+4.5}" fill="${c}"/>`
+    : `<polygon points="${tx},${y} ${tx+9},${y-4.5} ${tx+9},${y+4.5}" fill="${c}"/>`;
+  const line = `<line x1="${fx}" y1="${y}" x2="${tx}" y2="${y}" stroke="${c}" stroke-width="1.6" ${dash}/>`;
+  return `<svg style="position:absolute;inset:0;pointer-events:none;overflow:visible"
+    width="${DIAGRAM_W}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    ${lifelines(h)}${line}${arrowHead}
+  </svg>`;
+}
+
+function noteRowSVG(h) {
+  return `<svg style="position:absolute;inset:0;pointer-events:none;overflow:visible"
+    width="${DIAGRAM_W}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    ${lifelines(h)}
+  </svg>`;
+}
+
+/* ─── panel ───────────────────────────────────────────────────────────── */
+const panel     = document.getElementById('detailPanel');
+const panelKind = document.getElementById('panelKind');
+const panelTitle= document.getElementById('panelTitle');
+const panelCode = document.getElementById('panelCode');
+const panelDesc = document.getElementById('panelDesc');
+const panelLink = document.getElementById('panelLink');
+let pinned = null;
+
+function openPanel(step) {
+  panelKind.textContent = KIND_LABEL[step.kind] || '';
+  panelKind.style.background = KIND_BG[step.kind];
+  panelKind.style.color = KIND_COLOR[step.kind];
+  panelTitle.textContent = step.detail || step.label;
+  panelCode.textContent = step.label;
+  panelDesc.textContent = step.desc || '';
+  if (step.file && step.line) {
+    panelLink.href = BLOB + step.file + '#L' + step.line;
+    panelLink.textContent = step.file + ':' + step.line;
+    panelLink.style.display = '';
+  } else {
+    panelLink.style.display = 'none';
+  }
+  panel.classList.add('open');
+}
+
+document.getElementById('panelClose').onclick = closePanel;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+function closePanel() {
+  panel.classList.remove('open');
+  if (pinned) { pinned.classList.remove('pinned'); pinned = null; }
+}
+
+/* ─── build diagram ───────────────────────────────────────────────────── */
+const diagramEl = document.getElementById('diagram');
+diagramEl.style.minWidth = DIAGRAM_W + 'px';
+
+// Participants row
+const pRow = document.createElement('div');
+pRow.className = 'participants-row';
+pRow.style.minWidth = DIAGRAM_W + 'px';
+PARTICIPANTS.forEach(p => {
+  const col = document.createElement('div');
+  col.className = 'p-col';
+  col.style.width = COL_W + 'px';
+
+  const box = document.createElement('div');
+  box.className = 'p-box';
+  box.style.borderColor = LAYER_COLORS[p.layer];
+  box.style.color = LAYER_COLORS[p.layer];
+  box.textContent = p.name;
+  box.title = p.desc + (p.file ? '\n' + p.file : '');
+
+  const lbl = document.createElement('div');
+  lbl.className = 'p-layer';
+  lbl.textContent = p.layer;
+
+  col.appendChild(box);
+  col.appendChild(lbl);
+  pRow.appendChild(col);
+});
+diagramEl.appendChild(pRow);
+
+// Groups
+GROUPS.forEach(g => {
+  const groupEl = document.createElement('div');
+  groupEl.className = 'group';
+
+  const hdr = document.createElement('div');
+  hdr.className = 'group-header';
+  hdr.style.minWidth = DIAGRAM_W + 'px';
+
+  const chev = document.createElement('span');
+  chev.className = 'chevron';
+  chev.textContent = '▼';
+
+  const titleEl = document.createElement('span');
+  titleEl.className = 'group-title';
+  titleEl.textContent = g.title;
+
+  const cnt = document.createElement('span');
+  cnt.className = 'group-count';
+  const ns = g.steps.filter(s => s.kind !== 'note').length;
+  cnt.textContent = ns + (ns === 1 ? ' step' : ' steps');
+
+  hdr.appendChild(chev);
+  hdr.appendChild(titleEl);
+  hdr.appendChild(cnt);
+
+  const body = document.createElement('div');
+  body.className = 'group-body';
+
+  g.steps.forEach(step => {
+    const isNote = step.kind === 'note';
+    const h = isNote ? NOTE_H : ROW_H;
+
+    const row = document.createElement('div');
+    row.className = 'seq-row';
+    row.style.height = h + 'px';
+    row.style.minWidth = DIAGRAM_W + 'px';
+
+    if (isNote) {
+      row.innerHTML = noteRowSVG(h);
+      const txt = document.createElement('div');
+      txt.style.cssText =
+        'position:absolute;left:10px;right:10px;top:50%;transform:translateY(-50%);' +
+        'font-size:10px;color:#fbbf24;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;';
+      txt.textContent = 'ℹ  ' + step.text;
+      row.appendChild(txt);
+    } else {
+      row.innerHTML = arrowSVG(step.from, step.to, step.kind, h);
+
+      // Label between participants
+      const fx = cx(step.from), tx = cx(step.to);
+      const midX = (fx + tx) / 2;
+      const spanPx = Math.abs(tx - fx);
+      const labelMaxW = Math.max(spanPx - 12, 110);
+
+      const lbl = document.createElement('div');
+      lbl.style.cssText =
+        `position:absolute;` +
+        `left:${midX}px;` +
+        `top:7px;` +
+        `transform:translateX(-50%);` +
+        `max-width:${labelMaxW}px;` +
+        `font-size:10px;color:${KIND_COLOR[step.kind]};` +
+        `background:rgba(15,17,23,.88);padding:1px 4px;border-radius:3px;` +
+        `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;` +
+        `text-align:center;`;
+      lbl.textContent = step.label;
+      row.appendChild(lbl);
+
+      row.addEventListener('click', () => {
+        if (pinned && pinned !== row) pinned.classList.remove('pinned');
+        if (pinned === row) { closePanel(); }
+        else { row.classList.add('pinned'); pinned = row; openPanel(step); }
+      });
+    }
+
+    body.appendChild(row);
+  });
+
+  hdr.addEventListener('click', () => {
+    const isCollapsed = body.classList.toggle('collapsed');
+    chev.textContent = isCollapsed ? '▶' : '▼';
+  });
+
+  groupEl.appendChild(hdr);
+  groupEl.appendChild(body);
+  diagramEl.appendChild(groupEl);
+});
+</script>
+</body>
+</html>

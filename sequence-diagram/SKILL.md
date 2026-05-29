@@ -16,8 +16,7 @@ Produces a sleek dark-themed interactive HTML sequence diagram — the kind that
 genuinely enjoyable to explore. The output is a single `.html` file with collapsible groups,
 sticky participants, hover/click detail panels, and GitHub source links.
 
-**Always verify the output with Playwright before finishing.** A diagram that renders broken is
-worse than no diagram.
+**Always self-review the HTML before finishing.** A diagram that renders broken is worse than no diagram.
 
 ---
 
@@ -209,56 +208,95 @@ const BLOB = 'https://github.com/<org>/<repo>/blob/main';
 
 ---
 
-## Step 3 — Playwright Verification
+## Step 3 — Self-Review Checklist
 
-After writing the file, always verify it renders correctly. Start a local HTTP server
-(file:// protocol is blocked by Playwright):
+Before finishing, re-read the generated HTML and verify each of these by inspection:
 
-```bash
-cd <output-dir> && python3 -m http.server <free-port> &
-sleep 1
-```
+| Check | What to look for |
+|-------|-----------------|
+| `html, body` height | Both have `height: 100%` / `height: 100vh` and `overflow: hidden` |
+| `.scroll-wrapper` | Has `flex: 1`, `overflow: auto`, and `min-height: 0` |
+| `.participants-row` sticky | `position: sticky; top: 0` — NOT `top: <header-height>px` |
+| Row heights | Every `.seq-row` has an **inline** `style="height: 46px"` in addition to any CSS class |
+| Group collapse | `.group-body` uses `max-height: 9999px` (open) / `max-height: 0` (collapsed) in CSS — no `requestAnimationFrame` + `scrollHeight` pattern anywhere |
+| Note rows | Text uses `position: absolute` spanning the full row — no `<div>` lifeline children added to note rows |
+| SVG arrows | Each row has a full-width `<svg>` drawing lifelines + arrow; lifelines are NOT separate `<div>` elements |
 
-Then use the Playwright MCP tools:
+Fix any violations before proceeding.
 
-1. **Navigate** to `http://localhost:<port>/<filename>.html`
-2. **Screenshot** the viewport and full page
-3. **Evaluate** health checks:
+---
+
+## Example: Data Model
+
+Use this as the structural template. Only the data changes — the rendering engine is always the same.
 
 ```javascript
-// Run this check in the browser
-const bodies = [...document.querySelectorAll('.group-body')];
-const rows   = [...document.querySelectorAll('.seq-row')];
-return {
-  groupCount:   bodies.length,
-  rowCount:     rows.length,
-  // No row should be near-zero height — that means the flex squish bug is present
-  badRows:      rows.filter(r => r.offsetHeight < 15).length,
-  // No group body should be completely collapsed
-  badBodies:    bodies.filter(b => b.offsetHeight < 10).length,
-  // Participants row should be visible at top of scroll container
-  participantsTop: document.querySelector('.participants-row')?.getBoundingClientRect().top,
-  // First group header should appear below the participants row
-  firstGroupTop: document.querySelector('.group')?.getBoundingClientRect().top,
-};
+const BLOB = 'https://github.com/<org>/<repo>/blob/main/src/';
+const COL_W = 160;  // px per participant column
+const ROW_H  = 46;  // normal step row height
+const NOTE_H = 33;  // note/callout row height
+
+// Each participant gets a column. Layer drives the border color.
+const PARTICIPANTS = [
+  { name: 'Client',         layer: 'client',   desc: 'Browser / Frontend' },
+  { name: 'ChatController', layer: 'delivery', desc: 'HTTP entry point',        file: 'controller/ChatController.kt' },
+  { name: 'ChatService',    layer: 'domain',   desc: 'Core orchestration',       file: 'service/ChatService.kt' },
+  { name: 'LLM Gateway',   layer: 'external', desc: 'Spring AI + AI Gateway' },
+  { name: 'EventPublisher', layer: 'infra',    desc: 'Async domain events' },
+];
+
+// Steps are grouped into collapsible sections.
+const GROUPS = [
+  {
+    title: 'Request Setup',
+    steps: [
+      // Arrow step: from/to are PARTICIPANTS indices
+      { from: 0, to: 1, kind: 'req',
+        label: 'POST /api/v3/chats/{id}/messages/stream',  // shown on arrow
+        detail: 'ChatController.streamMessage()',           // panel title
+        file: 'controller/ChatController.kt', line: 42,
+        desc: 'One-sentence explanation of what happens and why.' },
+      { from: 1, to: 2, kind: 'req',
+        label: 'streamResponse(request, authCtx)',
+        detail: 'ChatService.streamResponse()',
+        file: 'service/ChatService.kt', line: 186,
+        desc: 'Delegates to ChatService which owns streaming orchestration.' },
+    ]
+  },
+  {
+    title: 'LLM Streaming',
+    steps: [
+      { from: 2, to: 3, kind: 'req',
+        label: 'chatClient.prompt().stream()',
+        detail: 'Spring AI ChatClient streaming call',
+        file: 'service/ChatService.kt', line: 320,
+        desc: 'Builds prompt with system message, user message, tools, advisors.' },
+      { from: 3, to: 4, kind: 'async',    // dashed purple — fire-and-forget
+        label: 'RunStartedEvent emitted',
+        detail: 'SidekickEventPublisher → AiHistorySubscriber',
+        file: 'events/SidekickEventPublisher.kt', line: 63,
+        desc: 'Emits event for AI history persistence via gRPC.' },
+      { from: 3, to: 2, kind: 'res',      // green arrow back
+        label: 'Flux<ChatResponse> (token chunks)',
+        detail: 'Reactive token stream',
+        file: 'service/ChatService.kt', line: 643,
+        desc: 'Reactive stream of LLM token chunks forwarded to SSE.' },
+      // Note rows: no from/to/kind — just a text callout
+      { kind: 'note', text: 'Parallel: fetchWidgetContext · loadSidekickFiles · loadVisualContext' },
+      { from: 2, to: 0, kind: 'res',
+        label: 'SSE: MessagePart (text · tool output)',
+        detail: 'Server-Sent Events to client',
+        file: 'service/ChatService.kt', line: 745,
+        desc: 'Each token/tool result forwarded to HTTP SSE response in real-time.' },
+    ]
+  },
+];
 ```
 
-4. **Assert**:
-   - `badRows === 0` — no rows squished to near-zero height
-   - `badBodies === 0` — no group bodies collapsed to zero
-   - `participantsTop >= 0` and reasonably close to top of viewport
-   - `firstGroupTop > participantsTop` — first group is NOT hidden behind participants row
-
-5. **Fix and re-verify** if anything fails. Common causes and fixes:
-
-   | Symptom | Root Cause | Fix |
-   |---------|-----------|-----|
-   | All rows ~5px tall | `requestAnimationFrame` + scrollHeight bug | Use `max-height: 9999px` CSS |
-   | First group hidden behind participants | sticky `top` set to header height | Set sticky `top: 0` |
-   | Note text off-screen (far right) | Lifeline divs added to note row | Use absolute-positioned text only |
-   | Groups all collapsed | Initial `max-height` not set | Ensure `.group-body` has `max-height: 9999px` in CSS |
-
-6. Kill the HTTP server after verification: `kill <pid>`
+**Arrow kinds:** `req` = blue solid (call), `res` = green solid (return), `async` = purple dashed (fire-and-forget).  
+**Participant layers** and their border colors: `client` #3d6e9e · `delivery` #5b6e8e · `domain` #4a7c5e · `external` #7c5b4a · `infra` #6b5b8e.  
+**Note rows** render as a full-width italic yellow callout — no arrow, no click interaction.  
+**Panel on click** shows: kind badge, detail title, label in monospace, desc, GitHub link (`BLOB + file + '#L' + line`).
 
 ---
 
