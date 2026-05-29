@@ -9,7 +9,7 @@ allowed-tools: Bash(gh:*) Bash(agy:*) Bash(cursor-agent:*) Bash(cat:*) Bash(tee:
 
 # Code Review Turbo
 
-Triple-agent code review: Oplane scan + Claude sub-agent + Antigravity, with cross-referencing to separate real bugs from hallucinations.
+Multi-agent code review: Oplane scan + Claude sub-agent + Antigravity + Cursor Agent (gpt-5.5), with cross-referencing to separate real bugs from hallucinations.
 
 ## Step 1: Ensure PR Exists and Collect Oplane Scan
 
@@ -108,7 +108,7 @@ gh pr diff <number>
 gh pr view <number> --json title,body,baseRefName,headRefName
 ```
 
-Then construct the following review prompt (referred to as `REVIEW_PROMPT` below). This EXACT prompt must be used for BOTH the Claude sub-agent and Antigravity — do not alter it between the two:
+Then construct the following review prompt (referred to as `REVIEW_PROMPT` below). This EXACT prompt must be used for ALL THREE sub-agents (Claude, Antigravity, Cursor) — do not alter it between them. Identical prompts are what make the cross-referencing statistically meaningful; diversity must come from the model, not from the instructions:
 
 ---
 
@@ -163,9 +163,9 @@ Return a structured list grouped by severity (critical first, then high, medium,
 
 ---
 
-## Step 3: Run Claude Sub-Agent and Antigravity in Parallel
+## Step 3: Run Sub-Agents in Parallel
 
-Launch BOTH of these at the same time (in parallel):
+Launch ALL THREE of these at the same time — invoke them as three tool calls in a single response so the harness runs them concurrently:
 
 ### 3a. Claude Sub-Agent
 Use the Agent tool to spawn a sub-agent with the full `REVIEW_PROMPT`. This agent should have access to Bash, Read, Grep, and Glob tools so it can run EXPLAIN queries and inspect code.
@@ -182,13 +182,28 @@ agy -p --dangerously-skip-permissions < /tmp/review-prompt-<random>.txt
 - `--dangerously-skip-permissions` auto-approves tool permission requests so the sub-agent can read files and run commands without blocking.
 - If the review may run longer than the default 5-minute print timeout, pass `--print-timeout 15m` (or similar).
 
+### 3c. Cursor Agent (gpt-5.5)
+Run the EXACT SAME `REVIEW_PROMPT` through the Cursor Agent CLI (`cursor-agent`), using `gpt-5.5-high` for thorough reasoning. **Reuse the same temp file written in step 3b** — the skill mandates identical prompts across all reviewers, so writing the prompt twice would create a drift surface for no benefit. Pipe it via stdin:
+
+```
+cursor-agent -p --force --trust --model gpt-5.5-high < /tmp/review-prompt-<random>.txt
+```
+
+- `-p` (alias for `--print`) runs a single prompt non-interactively and prints the response.
+- With no positional prompt argument, `cursor-agent -p` reads the prompt from stdin.
+- `--force` auto-approves tool/permission requests (analogue of agy's `--dangerously-skip-permissions`).
+- `--trust` trusts the current workspace; cursor-agent requires this in fully-headless `--print` mode or it will refuse to run tools.
+- `--model gpt-5.5-high` selects the "GPT-5.5 1M High" reasoning tier — depth over latency for code review.
+- **Timeout caveat:** cursor-agent has no `--print-timeout` flag, so this run is bounded by the Bash tool's 10-minute cap. If you hit that cap on a large PR, retry once with `--model gpt-5.5-high-fast` (same depth, optimized for speed). If it still times out, warn the user and proceed with the remaining sources.
+- **Auth:** `cursor-agent` requires either `CURSOR_API_KEY` in the environment or a prior `cursor-agent login`. The skill does NOT pre-check — if the invocation errors with an auth message, surface it to the user verbatim.
+
 ## Step 4: Cross-Reference and Validate
 
-**CRITICAL: DO NOT do any of your own code research, file reading, or EXPLAIN queries until ALL THREE sources (Oplane, Claude sub-agent, Antigravity) have returned their results.** If you investigate the code first, you will form your own opinions and become a 4th agent with a veto over the other 3 — biased toward confirming your own findings and dismissing theirs. The whole point of this step is to be an OBJECTIVE judge of three independent reviewers.
+**CRITICAL: DO NOT do any of your own code research, file reading, or EXPLAIN queries until ALL FOUR sources (Oplane, Claude sub-agent, Antigravity, Cursor (gpt-5.5)) have returned their results.** If you investigate the code first, you will form your own opinions and become a 5th agent with a veto over the other 4 — biased toward confirming your own findings and dismissing theirs. The whole point of this step is to be an OBJECTIVE judge of four independent reviewers.
 
 ### Step 4a: Compile findings FIRST (no research yet)
 
-Collect and deduplicate all findings from the three sources into a single list. For each unique issue, note which source(s) reported it. Do NOT yet judge whether the issues are real — just organize them.
+Collect and deduplicate all findings from the four sources into a single list. For each unique issue, note which source(s) reported it. Do NOT yet judge whether the issues are real — just organize them.
 
 ### Step 4b: NOW do your own research to validate
 
@@ -252,13 +267,14 @@ sources:
   - oplane
   - claude
   - antigravity
+  - cursor-gpt-5.5
 verdict: <ready-to-merge | merge-after-fixes | needs-rework>
 ---
 
 # Code Review Turbo — PR #<num>
 
 > [!info] Sources
-> Three sources cross-referenced: **Oplane** (security threat model), **Claude sub-agent**, **Antigravity (`agy`)**. Findings validated against actual source.
+> Four sources cross-referenced: **Oplane** (security threat model), **Claude sub-agent**, **Antigravity (`agy`)**, **Cursor (gpt-5.5)** (`cursor-agent` running gpt-5.5-high). Findings validated against actual source.
 
 - **Repo:** `<owner>/<repo>`
 - **Branch:** `<head>` → `<base>`
@@ -273,7 +289,7 @@ verdict: <ready-to-merge | merge-after-fixes | needs-rework>
 ### C1 — <short title>
 
 **File:** `<path>:<line-range>`
-**Sources:** <which of Oplane / Claude / Antigravity flagged it> · **Verdict: REAL**
+**Sources:** <which of Oplane / Claude / Antigravity / Cursor (gpt-5.5) flagged it> · **Verdict: REAL**
 
 <explanation anchored to actual code, with line citations>
 
@@ -303,9 +319,9 @@ verdict: <ready-to-merge | merge-after-fixes | needs-rework>
 
 ## Agent Agreement Summary
 
-| Issue | Oplane | Claude | Antigravity | Verdict |
-| ----- | :----: | :----: | :---------: | ------- |
-| ...   |  ...   |  ...   |     ...     |   ...   |
+| Issue | Oplane | Claude | Antigravity | Cursor (gpt-5.5) | Verdict |
+| ----- | :----: | :----: | :---------: | :--------------: | ------- |
+| ...   |  ...   |  ...   |     ...     |       ...        |   ...   |
 
 <one or two sentences calling out where the agents agreed/disagreed and what that implies>
 
