@@ -7,14 +7,24 @@ description: Create and edit Obsidian Flavored Markdown with wikilinks, embeds, 
 
 Create and edit valid Obsidian Flavored Markdown. Obsidian extends CommonMark and GFM with wikilinks, embeds, callouts, properties, comments, and other syntax. This skill covers only Obsidian-specific extensions -- standard Markdown (headings, bold, italic, lists, quotes, code blocks, tables) is assumed knowledge.
 
+## Vault Access (Obsidian MCP)
+
+Read and write vault files through the **Obsidian MCP** (`mcp__obsidian__*`) — do NOT touch the local file system. The MCP is already pointed at the user's vault, so all paths are **relative to the vault root** (e.g. `Notes/My Note.md`). Key tools:
+
+- `mcp__obsidian__vault_write` — create or overwrite a note (creates parent directories automatically)
+- `mcp__obsidian__vault_read` — read a note's content, frontmatter, tags, links, and backlinks
+- `mcp__obsidian__vault_append` / `mcp__obsidian__vault_patch` — add to or surgically edit an existing note
+- `mcp__obsidian__vault_list` / `mcp__obsidian__vault_get_document_map` — browse the vault or inspect a note's structure
+- `mcp__obsidian__search_simple` / `mcp__obsidian__search_query` — find notes (e.g. to confirm a `[[wikilink]]` target exists before linking)
+
 ## Workflow: Creating an Obsidian Note
 
-1. **Add frontmatter** with properties (title, tags, aliases) at the top of the file. See [PROPERTIES.md](references/PROPERTIES.md) for all property types.
+1. **Add frontmatter** with properties (title, tags, aliases) at the top of the note. See [PROPERTIES.md](references/PROPERTIES.md) for all property types.
 2. **Write content** using standard Markdown for structure, plus Obsidian-specific syntax below.
 3. **Link related notes** using wikilinks (`[[Note]]`) for internal vault connections, or standard Markdown links for external URLs.
 4. **Embed content** from other notes, images, or PDFs using the `![[embed]]` syntax. See [EMBEDS.md](references/EMBEDS.md) for all embed types.
 5. **Add callouts** for highlighted information using `> [!type]` syntax. See [CALLOUTS.md](references/CALLOUTS.md) for all callout types.
-6. **Verify** the note renders correctly in Obsidian's reading view.
+6. **Save** the note with `mcp__obsidian__vault_write` (vault-relative path), then verify it renders correctly in Obsidian's reading view.
 
 > When choosing between wikilinks and Markdown links: use `[[wikilinks]]` for notes within the vault (Obsidian tracks renames automatically) and `[text](url)` for external URLs only.
 

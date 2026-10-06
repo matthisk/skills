@@ -4,7 +4,7 @@ description: Run a multi-agent code review on the current branch's PR. Collects 
 metadata:
   disable-model-invocation: 'true'
   argument-hint: '[pr-number]'
-allowed-tools: Bash(gh:*) Bash(agy:*) Bash(cursor-agent:*) Bash(cat:*) Bash(tee:*) Bash(sleep:*) Bash(test:*) Bash(ls:*) Bash(mkdir:*) Bash(readlink:*) Agent Read Grep Glob Write(/tmp/*) Write(./Obsidian Vault/Codereview/*) Write(~/Documents/Obsidian Vault/Codereview/*) mcp__oplane__*
+allowed-tools: Bash(gh:*) Bash(agy:*) Bash(cursor-agent:*) Bash(cat:*) Bash(tee:*) Bash(sleep:*) Bash(test:*) Bash(ls:*) Agent Read Grep Glob Write(/tmp/*) mcp__oplane__* mcp__obsidian__*
 ---
 
 # Code Review Turbo
@@ -223,18 +223,11 @@ Be especially careful not to dismiss a finding just because only one source repo
 
 ## Step 5: Write Report to Obsidian Vault
 
-**Do NOT dump the full report into the chat.** Write it as a Markdown note in the Codereview directory of the user's Obsidian vault. In the chat, surface only the absolute path of the saved note plus a one- or two-sentence merge recommendation.
+**Do NOT dump the full report into the chat.** Write it as a Markdown note in the `Codereview/` directory of the user's Obsidian vault, using the **Obsidian MCP** (`mcp__obsidian__*`) — do NOT write to the local file system. In the chat, surface only the vault-relative path of the saved note plus a one- or two-sentence merge recommendation.
 
-### Step 5a: Locate the vault
+### Step 5a: Vault access
 
-Try these paths in order — use the first one that exists:
-
-1. `./Obsidian Vault/Codereview/` — a symlink that's present at the project root in certain codebases. Check it first.
-2. `~/Documents/Obsidian Vault/Codereview/` — the canonical location of the vault on this machine.
-
-Verify with e.g. `test -d "./Obsidian Vault/Codereview" && echo local || test -d "$HOME/Documents/Obsidian Vault/Codereview" && echo home || echo missing`.
-
-If neither directory exists, ask the user where to write the note before proceeding.
+The Obsidian MCP is already pointed at the user's vault, so all paths are **relative to the vault root** (e.g. `Codereview/2026-05-27_PR280_cloudview.md`). You don't need to locate the vault on disk. `mcp__obsidian__vault_write` creates the `Codereview/` directory automatically if it doesn't exist; call `mcp__obsidian__vault_list` with `path: "Codereview"` first if you want to match the shape of existing notes.
 
 ### Step 5b: Pick a filename
 
@@ -247,6 +240,8 @@ Use the pattern `YYYY-MM-DD_PR<number>_<repo>.md`:
 Example: `2026-05-27_PR280_cloudview.md`.
 
 ### Step 5c: Write the note
+
+Write the note with `mcp__obsidian__vault_write`, passing `path: "Codereview/<filename>"` (vault-relative) and `content` set to the full report.
 
 Use the structure below — it mirrors the existing notes in the directory, so keep callouts, table shapes, and severity grouping consistent. Each finding gets a sub-heading like `### C1 — <short title>` (C/H/M/L = critical/high/medium/low, numbered within section).
 
@@ -346,7 +341,7 @@ Notes on the format:
 
 After the note is written, your chat response should be just:
 
-1. The absolute path of the saved note.
+1. The vault-relative path of the saved note (e.g. `Codereview/2026-05-27_PR280_cloudview.md`).
 2. The merge recommendation, in one or two sentences.
 
 No headings, no full reproduction of findings — the vault is the source of truth.

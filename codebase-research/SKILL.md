@@ -7,16 +7,11 @@ description: Research a question about the current codebase and save a well-stru
 
 Research a question about the current codebase and produce a written answer saved as an Obsidian note in the vault's Research directory.
 
-## Vault Location
+## Vault Access (Obsidian MCP)
 
-First look for a symlink vault in the current repository named 'Obsidian Vault'.
+Notes are read and written through the **Obsidian MCP** (`mcp__obsidian__*`) — do NOT write to the local file system. The MCP is already pointed at the user's vault, so all paths are **relative to the vault root** (e.g. `Research/My Note.md`). `mcp__obsidian__vault_write` creates any missing parent directories automatically.
 
-If this doesn't exist look for the vault in the home directory of the current user:
-
-Obsidian vault: `$HOME/Documents/Obsidian Vault/`
-Research directory: `$HOME/Documents/Obsidian Vault/Research/`
-
-If you cannot find the vault here either ask the user for the vault's location.
+Research notes live in the `Research/` directory of the vault. To confirm it exists or browse existing notes, call `mcp__obsidian__vault_list` with `path: "Research"`.
 
 ## Two Invocation Modes
 
@@ -30,8 +25,8 @@ In this mode:
 1. **Skip new research.** The answers are already in the conversation.
 2. **Synthesize the conversation** — read back through the recent exchanges and extract: what was being investigated, what was found, what files were involved, any open questions or surprises.
 3. **Derive a title** from the topic that was discussed, the same way you would for a prompted research note.
-4. **Write the Obsidian note** using the same format as Mode A, but sourcing content from the conversation rather than new tool calls.
-5. **Tell the user** the file path and a one-sentence confirmation.
+4. **Write the Obsidian note** (via `mcp__obsidian__vault_write`) using the same format as Mode A, but sourcing content from the conversation rather than new tool calls.
+5. **Tell the user** the vault-relative path and a one-sentence confirmation.
 
 The note should read as a clean research artifact — not a transcript of the conversation. Synthesize and structure; don't dump Q&A.
 
@@ -58,7 +53,7 @@ Go deep enough to give a thorough, accurate answer. If you discover something su
 - Title should describe the answer, not the question (e.g., `2026-04-10 How Rate Limiting Works in Sidekicks.md`)
 - Use today's date from context
 
-**Save to:** `/Users/matthiskheimensen/Documents/Obsidian Vault/Research/`
+**Save with** `mcp__obsidian__vault_write`, passing `path: "Research/<filename>"` (vault-relative) and `content` set to the full note. The directory is created automatically if it doesn't exist yet.
 
 **Codebase tag:** Before writing the note, determine the repository name by running:
 ```bash
@@ -112,7 +107,7 @@ tags:
 
 **Formatting rules:**
 - Use standard Markdown for structure (headings, bullets, tables, code fences)
-- Use `[[wikilinks]]` only to link to other notes that actually exist in the vault — don't invent links
+- Use `[[wikilinks]]` only to link to other notes that actually exist in the vault — don't invent links. Verify a target exists with `mcp__obsidian__search_simple` or `mcp__obsidian__vault_list` before linking
 - Use callouts (`> [!note]`, `> [!warning]`, etc.) for important asides
 - Use fenced code blocks with language identifiers (`kotlin`, `yaml`, `sql`, etc.)
 - Keep prose concise — this is a reference document, not an essay
@@ -120,7 +115,7 @@ tags:
 ### 4. Tell the user
 
 After saving, tell the user:
-- The full file path of the note
+- The vault-relative path of the note (e.g. `Research/2026-04-10 How Rate Limiting Works.md`)
 - A brief summary of what you found (2–3 sentences)
 
 Do NOT paste the entire note into the chat — just the summary and the path.
