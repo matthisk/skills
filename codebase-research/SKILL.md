@@ -1,6 +1,6 @@
 ---
 name: codebase-research
-description: Research a question about the current codebase and save a well-structured answer as an Obsidian markdown note in the vault's Research directory. Use this skill whenever the user asks a research question about how something works, why something is structured the way it is, what components are responsible for a feature, or any "how/why/what" question about the codebase that would benefit from a written record. Also trigger when the user says things like "research X", "investigate X", "document how X works", or "write a note about X". Even if the user doesn't explicitly say "research", use this skill if the question seems like it would produce a useful, save-worthy answer.
+description: Research a question about the current codebase and save a well-structured answer as an Obsidian markdown note in the vault's Researh directory. Use this skill whenever the user explicitly asks to answer a research question and capture the result in Obsidian.
 ---
 
 # Codebase Research Skill
